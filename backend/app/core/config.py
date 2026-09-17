@@ -1,6 +1,14 @@
 import os
 from pathlib import Path
 
+# Load backend/.env if present (API keys stay out of git)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+except Exception:
+    pass
+
 # Base directory
 BASE_DIR = Path(__file__).parent.parent.parent
 
@@ -85,6 +93,13 @@ OCR_ENABLED = True
 DL_ENSEMBLE_WEIGHT = 0.25
 OCR_ENSEMBLE_WEIGHT = 0.15
 OCR_LOW_THRESHOLD = 45.0  # Flag page when OCR score is below this and text is expected
+
+# OpenAI Vision LLM — called when DL confidence is below trigger
+LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+LLM_DL_TRIGGER = float(os.getenv("LLM_DL_TRIGGER", "70"))
+LLM_ENSEMBLE_WEIGHT = 0.20  # Folded into final score when Vision LLM is invoked
 
 # Microsoft Graph / SharePoint (env vars override empty defaults)
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")

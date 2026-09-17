@@ -173,7 +173,8 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
               {(result.overall_heuristic_confidence != null ||
                 result.ml_enabled ||
                 result.dl_enabled ||
-                result.ocr_enabled) && (
+                result.ocr_enabled ||
+                result.llm_enabled) && (
                 <div className="text-muted mt-1">
                   <strong>Scoring:</strong>{' '}
                   Heuristic {(result.overall_heuristic_confidence ?? result.overall_confidence).toFixed(1)}%
@@ -185,6 +186,9 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
                   )}
                   {result.overall_ocr_confidence != null && (
                     <> · OCR {result.overall_ocr_confidence.toFixed(1)}%</>
+                  )}
+                  {result.overall_llm_confidence != null && (
+                    <> · LLM {result.overall_llm_confidence.toFixed(1)}%</>
                   )}
                 </div>
               )}
@@ -286,7 +290,8 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
                     {(page.heuristic_confidence_score != null ||
                       page.ml_confidence_score != null ||
                       page.dl_confidence_score != null ||
-                      page.ocr_confidence_score != null) && (
+                      page.ocr_confidence_score != null ||
+                      page.llm_confidence_score != null) && (
                       <div className="small text-muted mb-2">
                         Heuristic {(page.heuristic_confidence_score ?? page.confidence_score).toFixed(1)}%
                         {page.ml_confidence_score != null && (
@@ -298,6 +303,12 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
                         {page.ocr_confidence_score != null && (
                           <> · OCR {page.ocr_confidence_score.toFixed(1)}%</>
                         )}
+                        {page.llm_confidence_score != null && (
+                          <> · LLM {page.llm_confidence_score.toFixed(1)}%</>
+                        )}
+                        {page.llm_invoked === false && page.dl_confidence_score != null && page.dl_confidence_score >= 70 && (
+                          <> · LLM skipped (DL ≥ 70%)</>
+                        )}
                       </div>
                     )}
                     {page.ocr_text_preview && (
@@ -306,6 +317,17 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
                         {page.ocr_text_preview.length > 80
                           ? `${page.ocr_text_preview.slice(0, 77)}...`
                           : page.ocr_text_preview}
+                      </div>
+                    )}
+                    {page.llm_invoked && page.llm_summary && (
+                      <div className="small mb-2">
+                        <strong>LLM:</strong>{' '}
+                        <span className="text-muted">{page.llm_summary}</span>
+                        {page.llm_issues && page.llm_issues.length > 0 && (
+                          <div className="text-muted mt-1">
+                            Issues: {page.llm_issues.join(', ')}
+                          </div>
+                        )}
                       </div>
                     )}
                     

@@ -18,6 +18,8 @@ POC.zip
 .DS_Store
 .env
 .env.*
+!.env.example
+!backend/.env.example
 
 # Frontend build
 frontend/build/

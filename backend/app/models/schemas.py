@@ -37,6 +37,11 @@ class PageQualityResult(BaseModel):
     ocr_text_preview: Optional[str] = None
     ocr_word_count: Optional[int] = None
     ocr_engine: Optional[str] = None
+    llm_confidence_score: Optional[float] = None
+    llm_summary: Optional[str] = None
+    llm_issues: Optional[List[str]] = None
+    llm_model: Optional[str] = None
+    llm_invoked: bool = False
     flags: List[QualityFlag]
     blur_score: float
     orientation_score: float
@@ -74,9 +79,11 @@ class ProcessingResult(BaseModel):
     overall_ml_confidence: Optional[float] = None
     overall_dl_confidence: Optional[float] = None
     overall_ocr_confidence: Optional[float] = None
+    overall_llm_confidence: Optional[float] = None
     ml_enabled: bool = False
     dl_enabled: bool = False
     ocr_enabled: bool = False
+    llm_enabled: bool = False
     auto_approved: bool
     pages: List[PageQualityResult]
     review_status: ReviewStatus
@@ -107,6 +114,14 @@ class OCRStatus(BaseModel):
     rapidocr_available: bool
     tesseract_available: bool
     active_engine: str
+
+
+class LLMStatus(BaseModel):
+    enabled: bool
+    api_key_configured: bool
+    model: str
+    dl_trigger_threshold: float
+    available: bool
 
 
 class MLRetrainResponse(BaseModel):

@@ -74,9 +74,10 @@ A comprehensive proof-of-concept system for analyzing PDF document quality using
   - Cropping detection (content vs whitespace ratio)
   - Color consistency analysis across image regions
   - DPI (Dots Per Inch) analysis for print quality assessment
-- **Confidence Scoring**: Ensemble of heuristic checks, Random Forest ML, a small PyTorch CNN, and OCR readability
+- **Confidence Scoring**: Ensemble of heuristic checks, Random Forest ML, a small PyTorch CNN, OCR readability, and optional OpenAI Vision LLM (when DL &lt; 70%)
 - **OCR Analysis**: RapidOCR (ONNX) with optional Tesseract fallback; flags poor text readability
 - **Deep Learning**: Lightweight QualityCNN trained on synthetic degraded scans
+- **Vision LLM**: OpenAI Vision review for low DL-confidence pages with score + summary
 - **Auto-Approval**: Documents with ≥80% confidence are auto-approved
 - **Manual Review**: Documents with ≤20% confidence require manual review
 - **Batch & SharePoint**: Multi-file upload and Microsoft Graph library crawl

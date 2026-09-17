@@ -23,12 +23,14 @@ from ..core.config import (
     ML_APPROVED_TARGET, ML_REJECTED_TARGET,
     DL_ENABLED, OCR_ENABLED, DL_ENSEMBLE_WEIGHT, OCR_ENSEMBLE_WEIGHT,
     OCR_LOW_THRESHOLD,
+    LLM_ENABLED, LLM_ENSEMBLE_WEIGHT,
 )
 from ..models.schemas import PageQualityResult, QualityFlag, ReviewStatus
 from .feature_extractor import extract_page_features
 from .ml_quality_model import quality_ml_model
 from .dl_quality_model import dl_quality_model
 from .ocr_service import analyze_page_ocr
+from .llm_vision_service import analyze_page_with_llm, llm_status
 from .file_types import (
     ACCEPT_LABEL,
     classify_bytes,
@@ -119,9 +121,11 @@ class PDFProcessor:
             "overall_ml_confidence": None,
             "overall_dl_confidence": None,
             "overall_ocr_confidence": None,
+            "overall_llm_confidence": None,
             "ml_enabled": ML_ENABLED and quality_ml_model.is_available,
             "dl_enabled": DL_ENABLED and dl_quality_model.is_available,
             "ocr_enabled": OCR_ENABLED,
+            "llm_enabled": bool(llm_status().get("available")),
             "auto_approved": False,
             "pages": [],
             "created_at": time.time(),
@@ -215,9 +219,11 @@ class PDFProcessor:
             total_ml_confidence = 0.0
             total_dl_confidence = 0.0
             total_ocr_confidence = 0.0
+            total_llm_confidence = 0.0
             ml_scores_available = 0
             dl_scores_available = 0
             ocr_scores_available = 0
+            llm_scores_available = 0
             
             for i, page_path in enumerate(pages):
                 page_result = await asyncio.to_thread(
@@ -237,6 +243,9 @@ class PDFProcessor:
                 if page_result.ocr_confidence_score is not None:
                     total_ocr_confidence += page_result.ocr_confidence_score
                     ocr_scores_available += 1
+                if page_result.llm_confidence_score is not None and page_result.llm_invoked:
+                    total_llm_confidence += page_result.llm_confidence_score
+                    llm_scores_available += 1
                 self.jobs[job_id]["processed_pages"] = i + 1
                 await asyncio.sleep(0)
             
@@ -254,14 +263,19 @@ class PDFProcessor:
             overall_ocr_confidence = (
                 total_ocr_confidence / ocr_scores_available if ocr_scores_available else None
             )
+            overall_llm_confidence = (
+                total_llm_confidence / llm_scores_available if llm_scores_available else None
+            )
             self.jobs[job_id]["overall_confidence"] = overall_confidence
             self.jobs[job_id]["overall_heuristic_confidence"] = overall_heuristic_confidence
             self.jobs[job_id]["overall_ml_confidence"] = overall_ml_confidence
             self.jobs[job_id]["overall_dl_confidence"] = overall_dl_confidence
             self.jobs[job_id]["overall_ocr_confidence"] = overall_ocr_confidence
+            self.jobs[job_id]["overall_llm_confidence"] = overall_llm_confidence
             self.jobs[job_id]["ml_enabled"] = ML_ENABLED and quality_ml_model.is_available
             self.jobs[job_id]["dl_enabled"] = DL_ENABLED and dl_quality_model.is_available
             self.jobs[job_id]["ocr_enabled"] = OCR_ENABLED
+            self.jobs[job_id]["llm_enabled"] = bool(llm_status().get("available"))
             self.jobs[job_id]["auto_approved"] = overall_confidence >= CONFIDENCE_THRESHOLD_HIGH
             self.jobs[job_id]["pages"] = page_results
             self.jobs[job_id]["status"] = "completed"
@@ -409,6 +423,11 @@ class PDFProcessor:
             ocr_text_preview = None
             ocr_word_count = None
             ocr_engine = None
+            llm_confidence = None
+            llm_summary = None
+            llm_issues = None
+            llm_model = None
+            llm_invoked = False
             confidence_score = heuristic_confidence
 
             if ML_ENABLED and quality_ml_model.is_available:
@@ -443,8 +462,32 @@ class PDFProcessor:
                     logger.warning("OCR failed on page %s: %s", page_number, exc)
 
             confidence_score = self._blend_all_scores(
-                confidence_score, dl_confidence, ocr_confidence
+                confidence_score, dl_confidence, ocr_confidence, None
             )
+
+            # Vision LLM layer: only when DL confidence is below threshold (or DL missing)
+            if LLM_ENABLED:
+                try:
+                    llm = analyze_page_with_llm(
+                        image,
+                        page_number=page_number,
+                        dl_confidence=dl_confidence,
+                        heuristic_confidence=heuristic_confidence,
+                        ocr_preview=ocr_text_preview,
+                    )
+                    llm_invoked = llm.invoked
+                    llm_model = llm.model
+                    if llm.invoked and llm.available:
+                        llm_confidence = llm.score
+                        llm_summary = llm.summary or None
+                        llm_issues = llm.issues or None
+                        confidence_score = self._blend_all_scores(
+                            confidence_score, None, None, llm_confidence
+                        )
+                    elif llm.invoked and llm.error:
+                        llm_summary = f"LLM unavailable: {llm.error}"
+                except Exception as exc:
+                    logger.warning("LLM vision failed on page %s: %s", page_number, exc)
             
             # Determine flags
             flags = []
@@ -476,6 +519,11 @@ class PDFProcessor:
                 ocr_text_preview=ocr_text_preview,
                 ocr_word_count=ocr_word_count,
                 ocr_engine=ocr_engine,
+                llm_confidence_score=llm_confidence,
+                llm_summary=llm_summary,
+                llm_issues=llm_issues,
+                llm_model=llm_model,
+                llm_invoked=llm_invoked,
                 flags=flags,
                 blur_score=blur_score,
                 orientation_score=orientation_score,
@@ -497,6 +545,8 @@ class PDFProcessor:
                 ml_confidence_score=None,
                 dl_confidence_score=None,
                 ocr_confidence_score=None,
+                llm_confidence_score=None,
+                llm_invoked=False,
                 flags=[QualityFlag.BLUR],  # Default flag
                 blur_score=0.0,
                 orientation_score=0.0,
@@ -1016,19 +1066,22 @@ class PDFProcessor:
         base_score: float,
         dl_confidence: Optional[float],
         ocr_confidence: Optional[float],
+        llm_confidence: Optional[float] = None,
     ) -> float:
-        """Fold DL and OCR into the heuristic/ML base score with fixed weights."""
-        parts = [(base_score, 1.0)]
+        """Fold DL, OCR, and LLM into the heuristic/ML base score with fixed weights."""
+        extras = []
         if dl_confidence is not None and DL_ENSEMBLE_WEIGHT > 0:
-            parts.append((dl_confidence, DL_ENSEMBLE_WEIGHT))
+            extras.append((dl_confidence, DL_ENSEMBLE_WEIGHT))
         if ocr_confidence is not None and OCR_ENSEMBLE_WEIGHT > 0:
-            parts.append((ocr_confidence, OCR_ENSEMBLE_WEIGHT))
-        if len(parts) == 1:
+            extras.append((ocr_confidence, OCR_ENSEMBLE_WEIGHT))
+        if llm_confidence is not None and LLM_ENSEMBLE_WEIGHT > 0:
+            extras.append((llm_confidence, LLM_ENSEMBLE_WEIGHT))
+        if not extras:
             return min(100.0, max(0.0, base_score))
-        # Renormalize: base keeps remaining mass after DL/OCR weights
-        extra = sum(w for _, w in parts[1:])
+        # Renormalize: base keeps remaining mass after extra weights
+        extra = sum(w for _, w in extras)
         base_w = max(0.0, 1.0 - extra)
-        weighted = base_w * base_score + sum(score * w for score, w in parts[1:])
+        weighted = base_w * base_score + sum(score * w for score, w in extras)
         return min(100.0, max(0.0, weighted))
 
     def extract_page_features_from_result(self, page: PageQualityResult, image: np.ndarray):

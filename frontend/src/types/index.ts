@@ -31,6 +31,11 @@ export interface PageQualityResult {
   ocr_text_preview?: string;
   ocr_word_count?: number;
   ocr_engine?: string;
+  llm_confidence_score?: number;
+  llm_summary?: string;
+  llm_issues?: string[];
+  llm_model?: string;
+  llm_invoked?: boolean;
   flags: string[];
   blur_score: number;
   orientation_score: number;
@@ -68,9 +73,11 @@ export interface ProcessingResult {
   overall_ml_confidence?: number;
   overall_dl_confidence?: number;
   overall_ocr_confidence?: number;
+  overall_llm_confidence?: number;
   ml_enabled?: boolean;
   dl_enabled?: boolean;
   ocr_enabled?: boolean;
+  llm_enabled?: boolean;
   auto_approved: boolean;
   pages: PageQualityResult[];
   review_status: keyof ReviewStatus;

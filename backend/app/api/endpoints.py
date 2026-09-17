@@ -13,7 +13,7 @@ from ..models.schemas import (
     UploadResponse, ProcessingJob, ProcessingResult, 
     ReviewRequest, ReviewResponse, PageImageResponse,
     ReportRequest, ReportResponse, ProcessingStatus, ReviewStatus,
-    MLModelStatus, MLRetrainResponse, DLModelStatus, OCRStatus,
+    MLModelStatus, MLRetrainResponse, DLModelStatus, OCRStatus, LLMStatus,
     BatchJob, BatchFileStatus, BatchUploadResponse,
     SharePointPreviewRequest, SharePointPreviewResponse, SharePointFilePreview,
     SharePointProcessRequest,
@@ -26,6 +26,7 @@ from ..services.sharepoint_client import SharePointClient, SharePointError
 from ..services.ml_quality_model import quality_ml_model
 from ..services.dl_quality_model import dl_quality_model
 from ..services.ocr_service import ocr_status
+from ..services.llm_vision_service import llm_status
 from ..core.config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS, OCR_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -169,9 +170,11 @@ async def get_job_results(job_id: str):
             overall_ml_confidence=job_data.get("overall_ml_confidence"),
             overall_dl_confidence=job_data.get("overall_dl_confidence"),
             overall_ocr_confidence=job_data.get("overall_ocr_confidence"),
+            overall_llm_confidence=job_data.get("overall_llm_confidence"),
             ml_enabled=job_data.get("ml_enabled", False),
             dl_enabled=job_data.get("dl_enabled", False),
             ocr_enabled=job_data.get("ocr_enabled", False),
+            llm_enabled=job_data.get("llm_enabled", False),
             auto_approved=job_data["auto_approved"],
             pages=job_data["pages"],
             review_status=review_status,
@@ -349,9 +352,11 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                 "overall_ml_confidence": job_data.get("overall_ml_confidence"),
                 "overall_dl_confidence": job_data.get("overall_dl_confidence"),
                 "overall_ocr_confidence": job_data.get("overall_ocr_confidence"),
+                "overall_llm_confidence": job_data.get("overall_llm_confidence"),
                 "ml_enabled": job_data.get("ml_enabled", False),
                 "dl_enabled": job_data.get("dl_enabled", False),
                 "ocr_enabled": job_data.get("ocr_enabled", False),
+                "llm_enabled": job_data.get("llm_enabled", False),
                 "auto_approved": job_data["auto_approved"],
                 "total_pages": job_data["total_pages"],
                 "pages": [
@@ -365,6 +370,11 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                         "ocr_text_preview": page.ocr_text_preview,
                         "ocr_word_count": page.ocr_word_count,
                         "ocr_engine": page.ocr_engine,
+                        "llm_confidence_score": page.llm_confidence_score,
+                        "llm_summary": page.llm_summary,
+                        "llm_issues": page.llm_issues,
+                        "llm_model": page.llm_model,
+                        "llm_invoked": page.llm_invoked,
                         "flags": [flag.value for flag in page.flags],
                         "blur_score": page.blur_score,
                         "orientation_score": page.orientation_score,
@@ -398,8 +408,9 @@ async def generate_report(job_id: str, report_request: ReportRequest):
             with open(report_path, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "Page", "Confidence", "Heuristic", "ML", "DL", "OCR", "Flags", "Blur", "Orientation", 
-                    "Cropping", "Color Consistency", "DPI Score", "Actual DPI", "OCR Words", "OCR Engine"
+                    "Page", "Confidence", "Heuristic", "ML", "DL", "OCR", "LLM", "Flags", "Blur", "Orientation", 
+                    "Cropping", "Color Consistency", "DPI Score", "Actual DPI", "OCR Words", "OCR Engine",
+                    "LLM Invoked", "LLM Summary"
                 ])
                 
                 for page in job_data["pages"]:
@@ -410,6 +421,7 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                         f"{page.ml_confidence_score:.2f}" if page.ml_confidence_score is not None else "",
                         f"{page.dl_confidence_score:.2f}" if page.dl_confidence_score is not None else "",
                         f"{page.ocr_confidence_score:.2f}" if page.ocr_confidence_score is not None else "",
+                        f"{page.llm_confidence_score:.2f}" if page.llm_confidence_score is not None else "",
                         ";".join([flag.value for flag in page.flags]),
                         f"{page.blur_score:.2f}",
                         f"{page.orientation_score:.2f}",
@@ -419,6 +431,8 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                         f"{page.actual_dpi:.0f}",
                         page.ocr_word_count if page.ocr_word_count is not None else "",
                         page.ocr_engine or "",
+                        "yes" if page.llm_invoked else "no",
+                        (page.llm_summary or "").replace("\n", " ")[:200],
                     ])
             
             return ReportResponse(
@@ -524,6 +538,12 @@ async def get_ocr_status():
     status = ocr_status()
     status["enabled"] = OCR_ENABLED
     return OCRStatus(**status)
+
+
+@router.get("/llm/status", response_model=LLMStatus)
+async def get_llm_status():
+    """Get OpenAI Vision LLM availability (no secrets returned)."""
+    return LLMStatus(**llm_status())
 
 
 @router.post("/upload/batch", response_model=BatchUploadResponse)
