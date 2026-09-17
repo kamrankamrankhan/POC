@@ -222,21 +222,23 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess, onBatchStarted
           </div>
 
           <Form.Group className="mt-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_TYPES}
-              multiple
-              onChange={handleFileChange}
-              disabled={uploading}
-              className="custom-file-input"
-              id="quality-file-input"
-            />
-            <label htmlFor="quality-file-input" className="custom-file-label">
-              <i className="fas fa-folder-open me-2"></i>
-              {uploading ? 'Processing...' : 'Choose PDFs, scans, or photos'}
-              <span className="file-input-subtitle">Click to browse or drag & drop several files</span>
-            </label>
+            <div className="custom-file-input-wrapper">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_TYPES}
+                multiple
+                onChange={handleFileChange}
+                disabled={uploading}
+                className="custom-file-input"
+                id="quality-file-input"
+              />
+              <label htmlFor="quality-file-input" className="custom-file-label">
+                <i className="fas fa-folder-open me-2"></i>
+                {uploading ? 'Processing...' : 'Choose PDFs, scans, or photos'}
+                <span className="file-input-subtitle">Click to browse or drag & drop several files</span>
+              </label>
+            </div>
           </Form.Group>
 
           {files.length > 0 && (
@@ -259,7 +261,17 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess, onBatchStarted
                     <td>{isPdfFile(file) ? 'PDF' : 'Image'}</td>
                     <td>{formatSize(file.size)}</td>
                     <td className="text-end">
-                      <Button variant="link" size="sm" onClick={() => removeFile(index)} disabled={uploading}>
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        disabled={uploading}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          removeFile(index);
+                        }}
+                      >
                         Remove
                       </Button>
                     </td>

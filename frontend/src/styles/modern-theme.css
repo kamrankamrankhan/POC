@@ -1425,17 +1425,22 @@ body {
 /* Custom File Input Button Styles */
 .custom-file-input-wrapper {
   position: relative;
-  display: inline-block;
+  display: block;
   width: 100%;
 }
 
 .custom-file-input {
+  /* Visually hidden — do not overlay the rest of the form */
   position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
   opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  z-index: 2;
 }
 
 .custom-file-label {
