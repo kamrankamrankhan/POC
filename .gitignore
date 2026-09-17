@@ -1,0 +1,30 @@
+# Dependencies
+backend/venv/
+backend/.venv-new/
+backend/venv.py310.bak/
+frontend/node_modules/
+
+# Runtime / generated
+backend/uploads/
+backend/processed/
+backend/data/
+*.pyc
+__pycache__/
+*.pyo
+
+# Large archives / local artifacts
+POC.zip
+*.log
+.DS_Store
+.env
+.env.*
+
+# Frontend build
+frontend/build/
+frontend/.cache/
+frontend/node_modules/.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
