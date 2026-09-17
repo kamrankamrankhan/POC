@@ -13,7 +13,7 @@ from ..models.schemas import (
     UploadResponse, ProcessingJob, ProcessingResult, 
     ReviewRequest, ReviewResponse, PageImageResponse,
     ReportRequest, ReportResponse, ProcessingStatus, ReviewStatus,
-    MLModelStatus, MLRetrainResponse,
+    MLModelStatus, MLRetrainResponse, DLModelStatus, OCRStatus,
     BatchJob, BatchFileStatus, BatchUploadResponse,
     SharePointPreviewRequest, SharePointPreviewResponse, SharePointFilePreview,
     SharePointProcessRequest,
@@ -24,7 +24,9 @@ from ..services.pdf_processor import (
 from ..services.file_types import ACCEPT_LABEL, count_image_frames, is_supported_filename
 from ..services.sharepoint_client import SharePointClient, SharePointError
 from ..services.ml_quality_model import quality_ml_model
-from ..core.config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS
+from ..services.dl_quality_model import dl_quality_model
+from ..services.ocr_service import ocr_status
+from ..core.config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS, OCR_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +167,11 @@ async def get_job_results(job_id: str):
             overall_confidence=job_data["overall_confidence"],
             overall_heuristic_confidence=job_data.get("overall_heuristic_confidence"),
             overall_ml_confidence=job_data.get("overall_ml_confidence"),
+            overall_dl_confidence=job_data.get("overall_dl_confidence"),
+            overall_ocr_confidence=job_data.get("overall_ocr_confidence"),
             ml_enabled=job_data.get("ml_enabled", False),
+            dl_enabled=job_data.get("dl_enabled", False),
+            ocr_enabled=job_data.get("ocr_enabled", False),
             auto_approved=job_data["auto_approved"],
             pages=job_data["pages"],
             review_status=review_status,
@@ -341,7 +347,11 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                 "overall_confidence": job_data["overall_confidence"],
                 "overall_heuristic_confidence": job_data.get("overall_heuristic_confidence"),
                 "overall_ml_confidence": job_data.get("overall_ml_confidence"),
+                "overall_dl_confidence": job_data.get("overall_dl_confidence"),
+                "overall_ocr_confidence": job_data.get("overall_ocr_confidence"),
                 "ml_enabled": job_data.get("ml_enabled", False),
+                "dl_enabled": job_data.get("dl_enabled", False),
+                "ocr_enabled": job_data.get("ocr_enabled", False),
                 "auto_approved": job_data["auto_approved"],
                 "total_pages": job_data["total_pages"],
                 "pages": [
@@ -350,6 +360,11 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                         "confidence_score": page.confidence_score,
                         "heuristic_confidence_score": page.heuristic_confidence_score,
                         "ml_confidence_score": page.ml_confidence_score,
+                        "dl_confidence_score": page.dl_confidence_score,
+                        "ocr_confidence_score": page.ocr_confidence_score,
+                        "ocr_text_preview": page.ocr_text_preview,
+                        "ocr_word_count": page.ocr_word_count,
+                        "ocr_engine": page.ocr_engine,
                         "flags": [flag.value for flag in page.flags],
                         "blur_score": page.blur_score,
                         "orientation_score": page.orientation_score,
@@ -383,8 +398,8 @@ async def generate_report(job_id: str, report_request: ReportRequest):
             with open(report_path, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "Page", "Confidence", "Heuristic", "ML", "Flags", "Blur", "Orientation", 
-                    "Cropping", "Color Consistency", "DPI Score", "Actual DPI"
+                    "Page", "Confidence", "Heuristic", "ML", "DL", "OCR", "Flags", "Blur", "Orientation", 
+                    "Cropping", "Color Consistency", "DPI Score", "Actual DPI", "OCR Words", "OCR Engine"
                 ])
                 
                 for page in job_data["pages"]:
@@ -393,13 +408,17 @@ async def generate_report(job_id: str, report_request: ReportRequest):
                         f"{page.confidence_score:.2f}",
                         f"{(page.heuristic_confidence_score or 0):.2f}",
                         f"{page.ml_confidence_score:.2f}" if page.ml_confidence_score is not None else "",
+                        f"{page.dl_confidence_score:.2f}" if page.dl_confidence_score is not None else "",
+                        f"{page.ocr_confidence_score:.2f}" if page.ocr_confidence_score is not None else "",
                         ";".join([flag.value for flag in page.flags]),
                         f"{page.blur_score:.2f}",
                         f"{page.orientation_score:.2f}",
                         f"{page.cropping_score:.2f}",
                         f"{page.color_consistency_score:.2f}",
                         f"{page.dpi_score:.2f}",
-                        f"{page.actual_dpi:.0f}"
+                        f"{page.actual_dpi:.0f}",
+                        page.ocr_word_count if page.ocr_word_count is not None else "",
+                        page.ocr_engine or "",
                     ])
             
             return ReportResponse(
@@ -477,6 +496,34 @@ async def retrain_ml_model():
     except Exception as exc:
         logger.error("Error retraining ML model: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to retrain ML model: {str(exc)}")
+
+
+@router.get("/dl/status", response_model=DLModelStatus)
+async def get_dl_status():
+    """Get deep-learning CNN availability and training metadata."""
+    return DLModelStatus(**dl_quality_model.get_status())
+
+
+@router.post("/dl/retrain", response_model=MLRetrainResponse)
+async def retrain_dl_model():
+    """Retrain the bootstrap CNN quality model."""
+    try:
+        metadata = dl_quality_model.train_bootstrap()
+        return MLRetrainResponse(
+            message="Deep-learning quality model retrained successfully",
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.error("Error retraining DL model: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to retrain DL model: {str(exc)}")
+
+
+@router.get("/ocr/status", response_model=OCRStatus)
+async def get_ocr_status():
+    """Get OCR engine availability."""
+    status = ocr_status()
+    status["enabled"] = OCR_ENABLED
+    return OCRStatus(**status)
 
 
 @router.post("/upload/batch", response_model=BatchUploadResponse)

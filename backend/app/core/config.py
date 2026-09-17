@@ -72,11 +72,19 @@ TRAINING_DATA_DIR.mkdir(exist_ok=True)
 
 QUALITY_MODEL_PATH = MODELS_DIR / "quality_model.joblib"
 TRAINING_SAMPLES_PATH = TRAINING_DATA_DIR / "training_samples.jsonl"
+DL_MODEL_PATH = MODELS_DIR / "quality_cnn.pt"
 
 ML_ENABLED = True
 ML_ENSEMBLE_WEIGHT = 0.4  # Final score = ML * weight + heuristic * (1 - weight)
 ML_APPROVED_TARGET = 90.0
 ML_REJECTED_TARGET = 10.0
+
+# Deep learning (PyTorch CNN) + OCR ensemble weights applied after heuristic/ML blend
+DL_ENABLED = True
+OCR_ENABLED = True
+DL_ENSEMBLE_WEIGHT = 0.25
+OCR_ENSEMBLE_WEIGHT = 0.15
+OCR_LOW_THRESHOLD = 45.0  # Flag page when OCR score is below this and text is expected
 
 # Microsoft Graph / SharePoint (env vars override empty defaults)
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")

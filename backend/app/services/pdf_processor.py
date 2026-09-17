@@ -21,10 +21,14 @@ from ..core.config import (
     BLUR_EDGE_DENSITY_MIN, BLUR_CONTOUR_AREA_MIN,
     ML_ENABLED, ML_ENSEMBLE_WEIGHT, CONFIDENCE_THRESHOLD_HIGH,
     ML_APPROVED_TARGET, ML_REJECTED_TARGET,
+    DL_ENABLED, OCR_ENABLED, DL_ENSEMBLE_WEIGHT, OCR_ENSEMBLE_WEIGHT,
+    OCR_LOW_THRESHOLD,
 )
 from ..models.schemas import PageQualityResult, QualityFlag, ReviewStatus
 from .feature_extractor import extract_page_features
 from .ml_quality_model import quality_ml_model
+from .dl_quality_model import dl_quality_model
+from .ocr_service import analyze_page_ocr
 from .file_types import (
     ACCEPT_LABEL,
     classify_bytes,
@@ -113,7 +117,11 @@ class PDFProcessor:
             "overall_confidence": 0.0,
             "overall_heuristic_confidence": 0.0,
             "overall_ml_confidence": None,
+            "overall_dl_confidence": None,
+            "overall_ocr_confidence": None,
             "ml_enabled": ML_ENABLED and quality_ml_model.is_available,
+            "dl_enabled": DL_ENABLED and dl_quality_model.is_available,
+            "ocr_enabled": OCR_ENABLED,
             "auto_approved": False,
             "pages": [],
             "created_at": time.time(),
@@ -205,7 +213,11 @@ class PDFProcessor:
             total_confidence = 0.0
             total_heuristic_confidence = 0.0
             total_ml_confidence = 0.0
+            total_dl_confidence = 0.0
+            total_ocr_confidence = 0.0
             ml_scores_available = 0
+            dl_scores_available = 0
+            ocr_scores_available = 0
             
             for i, page_path in enumerate(pages):
                 page_result = await asyncio.to_thread(
@@ -219,6 +231,12 @@ class PDFProcessor:
                 if page_result.ml_confidence_score is not None:
                     total_ml_confidence += page_result.ml_confidence_score
                     ml_scores_available += 1
+                if page_result.dl_confidence_score is not None:
+                    total_dl_confidence += page_result.dl_confidence_score
+                    dl_scores_available += 1
+                if page_result.ocr_confidence_score is not None:
+                    total_ocr_confidence += page_result.ocr_confidence_score
+                    ocr_scores_available += 1
                 self.jobs[job_id]["processed_pages"] = i + 1
                 await asyncio.sleep(0)
             
@@ -230,10 +248,20 @@ class PDFProcessor:
             overall_ml_confidence = (
                 total_ml_confidence / ml_scores_available if ml_scores_available else None
             )
+            overall_dl_confidence = (
+                total_dl_confidence / dl_scores_available if dl_scores_available else None
+            )
+            overall_ocr_confidence = (
+                total_ocr_confidence / ocr_scores_available if ocr_scores_available else None
+            )
             self.jobs[job_id]["overall_confidence"] = overall_confidence
             self.jobs[job_id]["overall_heuristic_confidence"] = overall_heuristic_confidence
             self.jobs[job_id]["overall_ml_confidence"] = overall_ml_confidence
+            self.jobs[job_id]["overall_dl_confidence"] = overall_dl_confidence
+            self.jobs[job_id]["overall_ocr_confidence"] = overall_ocr_confidence
             self.jobs[job_id]["ml_enabled"] = ML_ENABLED and quality_ml_model.is_available
+            self.jobs[job_id]["dl_enabled"] = DL_ENABLED and dl_quality_model.is_available
+            self.jobs[job_id]["ocr_enabled"] = OCR_ENABLED
             self.jobs[job_id]["auto_approved"] = overall_confidence >= CONFIDENCE_THRESHOLD_HIGH
             self.jobs[job_id]["pages"] = page_results
             self.jobs[job_id]["status"] = "completed"
@@ -376,6 +404,11 @@ class PDFProcessor:
                 blur_score, orientation_score, cropping_score, color_consistency_score, dpi_score
             )
             ml_confidence = None
+            dl_confidence = None
+            ocr_confidence = None
+            ocr_text_preview = None
+            ocr_word_count = None
+            ocr_engine = None
             confidence_score = heuristic_confidence
 
             if ML_ENABLED and quality_ml_model.is_available:
@@ -391,6 +424,27 @@ class PDFProcessor:
                 ml_confidence = quality_ml_model.predict(features)
                 if ml_confidence is not None:
                     confidence_score = self._blend_confidence(heuristic_confidence, ml_confidence)
+
+            if DL_ENABLED and dl_quality_model.is_available:
+                try:
+                    dl_confidence = dl_quality_model.predict(image)
+                except Exception as exc:
+                    logger.warning("DL predict failed on page %s: %s", page_number, exc)
+
+            if OCR_ENABLED:
+                try:
+                    ocr = analyze_page_ocr(image)
+                    if ocr.available:
+                        ocr_confidence = ocr.score
+                        ocr_text_preview = ocr.to_dict()["text_preview"] or None
+                        ocr_word_count = ocr.word_count
+                        ocr_engine = ocr.engine
+                except Exception as exc:
+                    logger.warning("OCR failed on page %s: %s", page_number, exc)
+
+            confidence_score = self._blend_all_scores(
+                confidence_score, dl_confidence, ocr_confidence
+            )
             
             # Determine flags
             flags = []
@@ -404,12 +458,24 @@ class PDFProcessor:
                 flags.append(QualityFlag.COLOR_CONSISTENCY)
             if dpi_score < 0.6:
                 flags.append(QualityFlag.LOW_DPI)
+            if (
+                ocr_confidence is not None
+                and ocr_word_count is not None
+                and ocr_word_count >= 8
+                and ocr_confidence < OCR_LOW_THRESHOLD
+            ):
+                flags.append(QualityFlag.POOR_OCR)
             
             return PageQualityResult(
                 page_number=page_number,
                 confidence_score=confidence_score,
                 heuristic_confidence_score=heuristic_confidence,
                 ml_confidence_score=ml_confidence,
+                dl_confidence_score=dl_confidence,
+                ocr_confidence_score=ocr_confidence,
+                ocr_text_preview=ocr_text_preview,
+                ocr_word_count=ocr_word_count,
+                ocr_engine=ocr_engine,
                 flags=flags,
                 blur_score=blur_score,
                 orientation_score=orientation_score,
@@ -429,6 +495,8 @@ class PDFProcessor:
                 confidence_score=0.0,
                 heuristic_confidence_score=0.0,
                 ml_confidence_score=None,
+                dl_confidence_score=None,
+                ocr_confidence_score=None,
                 flags=[QualityFlag.BLUR],  # Default flag
                 blur_score=0.0,
                 orientation_score=0.0,
@@ -942,6 +1010,26 @@ class PDFProcessor:
             + (1.0 - ML_ENSEMBLE_WEIGHT) * heuristic_confidence
         )
         return min(100.0, max(0.0, blended))
+
+    def _blend_all_scores(
+        self,
+        base_score: float,
+        dl_confidence: Optional[float],
+        ocr_confidence: Optional[float],
+    ) -> float:
+        """Fold DL and OCR into the heuristic/ML base score with fixed weights."""
+        parts = [(base_score, 1.0)]
+        if dl_confidence is not None and DL_ENSEMBLE_WEIGHT > 0:
+            parts.append((dl_confidence, DL_ENSEMBLE_WEIGHT))
+        if ocr_confidence is not None and OCR_ENSEMBLE_WEIGHT > 0:
+            parts.append((ocr_confidence, OCR_ENSEMBLE_WEIGHT))
+        if len(parts) == 1:
+            return min(100.0, max(0.0, base_score))
+        # Renormalize: base keeps remaining mass after DL/OCR weights
+        extra = sum(w for _, w in parts[1:])
+        base_w = max(0.0, 1.0 - extra)
+        weighted = base_w * base_score + sum(score * w for score, w in parts[1:])
+        return min(100.0, max(0.0, weighted))
 
     def extract_page_features_from_result(self, page: PageQualityResult, image: np.ndarray):
         """Expose feature extraction for review-based retraining."""

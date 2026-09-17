@@ -91,6 +91,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
       case 'cropping': return 'info';
       case 'color_consistency': return 'secondary';
       case 'low_dpi': return 'warning';
+      case 'poor_ocr': return 'danger';
       default: return 'light';
     }
   };
@@ -169,12 +170,21 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
             </Col>
             <Col md={6}>
               <strong>Total Pages:</strong> {result.total_pages}
-              {(result.overall_heuristic_confidence != null || result.ml_enabled) && (
+              {(result.overall_heuristic_confidence != null ||
+                result.ml_enabled ||
+                result.dl_enabled ||
+                result.ocr_enabled) && (
                 <div className="text-muted mt-1">
                   <strong>Scoring:</strong>{' '}
                   Heuristic {(result.overall_heuristic_confidence ?? result.overall_confidence).toFixed(1)}%
                   {result.overall_ml_confidence != null && (
                     <> · ML {result.overall_ml_confidence.toFixed(1)}%</>
+                  )}
+                  {result.overall_dl_confidence != null && (
+                    <> · DL {result.overall_dl_confidence.toFixed(1)}%</>
+                  )}
+                  {result.overall_ocr_confidence != null && (
+                    <> · OCR {result.overall_ocr_confidence.toFixed(1)}%</>
                   )}
                 </div>
               )}
@@ -273,12 +283,29 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ jobId }) => {
                         {page.confidence_score.toFixed(1)}%
                       </Badge>
                     </div>
-                    {(page.heuristic_confidence_score != null || page.ml_confidence_score != null) && (
+                    {(page.heuristic_confidence_score != null ||
+                      page.ml_confidence_score != null ||
+                      page.dl_confidence_score != null ||
+                      page.ocr_confidence_score != null) && (
                       <div className="small text-muted mb-2">
                         Heuristic {(page.heuristic_confidence_score ?? page.confidence_score).toFixed(1)}%
                         {page.ml_confidence_score != null && (
                           <> · ML {page.ml_confidence_score.toFixed(1)}%</>
                         )}
+                        {page.dl_confidence_score != null && (
+                          <> · DL {page.dl_confidence_score.toFixed(1)}%</>
+                        )}
+                        {page.ocr_confidence_score != null && (
+                          <> · OCR {page.ocr_confidence_score.toFixed(1)}%</>
+                        )}
+                      </div>
+                    )}
+                    {page.ocr_text_preview && (
+                      <div className="small text-muted mb-2" title={page.ocr_text_preview}>
+                        <strong>OCR:</strong>{' '}
+                        {page.ocr_text_preview.length > 80
+                          ? `${page.ocr_text_preview.slice(0, 77)}...`
+                          : page.ocr_text_preview}
                       </div>
                     )}
                     

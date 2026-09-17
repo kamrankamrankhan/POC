@@ -18,6 +18,7 @@ class QualityFlag(str, Enum):
     COLOR_CONSISTENCY = "color_consistency"
     LOW_RESOLUTION = "low_resolution"
     LOW_DPI = "low_dpi"
+    POOR_OCR = "poor_ocr"
 
 
 class ReviewStatus(str, Enum):
@@ -28,9 +29,14 @@ class ReviewStatus(str, Enum):
 
 class PageQualityResult(BaseModel):
     page_number: int
-    confidence_score: float  # 0-100 (blended when ML is enabled)
+    confidence_score: float  # 0-100 blended final score
     heuristic_confidence_score: Optional[float] = None
     ml_confidence_score: Optional[float] = None
+    dl_confidence_score: Optional[float] = None
+    ocr_confidence_score: Optional[float] = None
+    ocr_text_preview: Optional[str] = None
+    ocr_word_count: Optional[int] = None
+    ocr_engine: Optional[str] = None
     flags: List[QualityFlag]
     blur_score: float
     orientation_score: float
@@ -66,7 +72,11 @@ class ProcessingResult(BaseModel):
     overall_confidence: float
     overall_heuristic_confidence: Optional[float] = None
     overall_ml_confidence: Optional[float] = None
+    overall_dl_confidence: Optional[float] = None
+    overall_ocr_confidence: Optional[float] = None
     ml_enabled: bool = False
+    dl_enabled: bool = False
+    ocr_enabled: bool = False
     auto_approved: bool
     pages: List[PageQualityResult]
     review_status: ReviewStatus
@@ -79,9 +89,24 @@ class MLModelStatus(BaseModel):
     enabled: bool
     model_loaded: bool
     model_path: str
-    training_samples_path: str
-    review_sample_count: int
+    training_samples_path: str = ""
+    review_sample_count: int = 0
     metadata: Dict[str, Any] = {}
+
+
+class DLModelStatus(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    enabled: bool
+    model_loaded: bool
+    model_path: str
+    metadata: Dict[str, Any] = {}
+
+
+class OCRStatus(BaseModel):
+    enabled: bool
+    rapidocr_available: bool
+    tesseract_available: bool
+    active_engine: str
 
 
 class MLRetrainResponse(BaseModel):

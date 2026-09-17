@@ -38,9 +38,10 @@ A comprehensive proof-of-concept system for analyzing PDF document quality using
 │ - Color Consistency      │
 │                          │
 │ 3. ML / Rule Engine      │
-│ - Combine checks & tag   │
-│   pages as OK / BAD      │
-│ - Assign confidence      │
+│ - Heuristic + RF ML      │
+│ - PyTorch CNN (DL)       │
+│ - OCR readability        │
+│ - Ensemble confidence    │
 │   score (0–100%)         │
 │                          │
 │ 4. Data Layer            │
@@ -73,9 +74,12 @@ A comprehensive proof-of-concept system for analyzing PDF document quality using
   - Cropping detection (content vs whitespace ratio)
   - Color consistency analysis across image regions
   - DPI (Dots Per Inch) analysis for print quality assessment
-- **Confidence Scoring**: Weighted algorithm combining all quality metrics
+- **Confidence Scoring**: Ensemble of heuristic checks, Random Forest ML, a small PyTorch CNN, and OCR readability
+- **OCR Analysis**: RapidOCR (ONNX) with optional Tesseract fallback; flags poor text readability
+- **Deep Learning**: Lightweight QualityCNN trained on synthetic degraded scans
 - **Auto-Approval**: Documents with ≥80% confidence are auto-approved
 - **Manual Review**: Documents with ≤20% confidence require manual review
+- **Batch & SharePoint**: Multi-file upload and Microsoft Graph library crawl
 - **Report Generation**: Export results in JSON or CSV format
 - **RESTful API**: Complete API for frontend integration
 
@@ -253,7 +257,7 @@ The application will be available at:
 
 1. **Upload**: Frontend sends PDF to `/upload` endpoint
 2. **Processing**: Backend converts PDF to images and runs quality checks
-3. **Analysis**: ML model produces confidence scores for each page
+3. **Analysis**: Heuristic + ML + DL + OCR ensemble produces confidence scores for each page
 4. **Classification**: 
    - ≥80% confidence → Auto-approved
    - ≤20% confidence → Manual review required

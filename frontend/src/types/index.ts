@@ -12,6 +12,7 @@ export interface QualityFlag {
   color_consistency: 'color_consistency';
   low_resolution: 'low_resolution';
   low_dpi: 'low_dpi';
+  poor_ocr: 'poor_ocr';
 }
 
 export interface ReviewStatus {
@@ -25,6 +26,11 @@ export interface PageQualityResult {
   confidence_score: number;
   heuristic_confidence_score?: number;
   ml_confidence_score?: number;
+  dl_confidence_score?: number;
+  ocr_confidence_score?: number;
+  ocr_text_preview?: string;
+  ocr_word_count?: number;
+  ocr_engine?: string;
   flags: string[];
   blur_score: number;
   orientation_score: number;
@@ -60,7 +66,11 @@ export interface ProcessingResult {
   overall_confidence: number;
   overall_heuristic_confidence?: number;
   overall_ml_confidence?: number;
+  overall_dl_confidence?: number;
+  overall_ocr_confidence?: number;
   ml_enabled?: boolean;
+  dl_enabled?: boolean;
+  ocr_enabled?: boolean;
   auto_approved: boolean;
   pages: PageQualityResult[];
   review_status: keyof ReviewStatus;
